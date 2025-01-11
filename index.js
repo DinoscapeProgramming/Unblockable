@@ -50,7 +50,6 @@ app.all("/*", (req, res) => {
             walk.simple(ast, {
               Literal: (node) => {
                 if (typeof node.value !== "string") return;
-                console.log(node.value);
                 try {
                   new URL(node.value);
                   node.value = new URL("/" + ((!node.value.startsWith("http://") && !node.value.startsWith("https://")) ? (new URL(req.originalUrl.substring(1)).protocol + "//" + new URL(req.originalUrl.substring(1)).hostname + ((new URL(req.originalUrl.substring(1)).port) ? new URL(req.originalUrl.substring(1)).port : "") + ((!node.value.startsWith("/")) ? new URL(req.originalUrl.substring(1)).pathname : "/")) : ((node.value.startsWith("//")) ? new URL(req.originalUrl.substring(1)).protocol : "")) + node.value, req.protocol + "://" + req.get("host")).href;
