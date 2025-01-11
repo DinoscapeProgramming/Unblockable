@@ -20,7 +20,7 @@ app.all("/*", (req, res) => {
     }, (serverResponse) => {
       let body = "";
       if (serverResponse.headers["content-type"].toString().includes("text/html")) {
-        serverResponse.on("data", (chunk) => (body += chunk));
+        serverResponse.on("data", (chunk) => (body += chunk.toString()));
         serverResponse.on("end", () => {
           let root = htmlParser.parse(body);
           root.querySelectorAll('*').forEach((element) => {
@@ -41,34 +41,39 @@ app.all("/*", (req, res) => {
         });
       } else if (serverResponse.headers["content-type"].toString().includes("text/javascript")) {
         try {
-          let ast = acorn.parse(body, {
-            ecmaVersion: "latest"
+          let body = "";
+          serverResponse.on("data", (chunk) => (body += chunk.toString()));
+          serverResponse.on("end", () => {
+            let ast = acorn.parse(body, {
+              ecmaVersion: "latest"
+            });
+            walk.simple(ast, {
+              Literal: (node) => {
+                if (typeof node.value !== "string") return;
+                console.log(node.value);
+                try {
+                  new URL(node.value);
+                  node.value = new URL("/" + ((!node.value.startsWith("http://") && !node.value.startsWith("https://")) ? (new URL(req.originalUrl.substring(1)).protocol + "//" + new URL(req.originalUrl.substring(1)).hostname + ((new URL(req.originalUrl.substring(1)).port) ? new URL(req.originalUrl.substring(1)).port : "") + ((!node.value.startsWith("/")) ? new URL(req.originalUrl.substring(1)).pathname : "/")) : ((node.value.startsWith("//")) ? new URL(req.originalUrl.substring(1)).protocol : "")) + node.value, req.protocol + "://" + req.get("host")).href;
+                } catch {};
+              },
+              AssignmentExpression: (node) => {
+                if ((node.left.type !== "MemberExpression") || (node.left.property.name !== "href") || (node.right.type !== "Literal") || (typeof node.right.value !== "string")) return;
+                node.right = {
+                  type: "Literal",
+                  value: new URL("/" + ((!node.right.value.startsWith("http://") && !node.right.value.startsWith("https://")) ? (new URL(req.originalUrl.substring(1)).protocol + "//" + new URL(req.originalUrl.substring(1)).hostname + ((new URL(req.originalUrl.substring(1)).port) ? new URL(req.originalUrl.substring(1)).port : "") + ((!node.right.value.startsWith("/")) ? new URL(req.originalUrl.substring(1)).pathname : "/")) : ((node.right.value.startsWith("//")) ? new URL(req.originalUrl.substring(1)).protocol : "")) + node.right.value, req.protocol + "://" + req.get("host")).href
+                };
+              },
+              CallExpression: (node) => {
+                if ((node.callee.name !== "fetch") || !node.arguments[0] || (node.arguments[0].type !== "Literal") || (typeof node.arguments[0].value !== "string")) return;
+                node.arguments[0] = {
+                  type: "Literal",
+                  value: new URL("/" + ((!node.arguments[0].value.startsWith("http://") && !node.arguments[0].value.startsWith("https://")) ? (new URL(req.originalUrl.substring(1)).protocol + "//" + new URL(req.originalUrl.substring(1)).hostname + ((new URL(req.originalUrl.substring(1)).port) ? new URL(req.originalUrl.substring(1)).port : "") + ((!node.arguments[0].value.startsWith("/")) ? new URL(req.originalUrl.substring(1)).pathname : "/")) : ((node.arguments[0].value.startsWith("//")) ? new URL(req.originalUrl.substring(1)).protocol : "")) + node.arguments[0].value, req.protocol + "://" + req.get("host")).href
+                };
+              }
+            });
+            res.contentType("text/javascript");
+            res.end(escodegen.generate(ast));
           });
-          walk.simple(ast, {
-            Literal: (node) => {
-              if ((typeof node !== "string")) return;
-              try {
-                new URL(node.value);
-                node.value = new URL("/" + ((!node.value.startsWith("http://") && !node.value.startsWith("https://")) ? (new URL(req.originalUrl.substring(1)).protocol + "//" + new URL(req.originalUrl.substring(1)).hostname + ((new URL(req.originalUrl.substring(1)).port) ? new URL(req.originalUrl.substring(1)).port : "") + ((!node.value.startsWith("/")) ? new URL(req.originalUrl.substring(1)).pathname : "/")) : ((node.value.startsWith("//")) ? new URL(req.originalUrl.substring(1)).protocol : "")) + node.value, req.protocol + "://" + req.get("host")).href;
-              } catch {};
-            },
-            AssignmentExpression: (node) => {
-              if ((node.left.type !== "MemberExpression") || (node.left.property.name !== "href"))
-              node.right = {
-                type: "Literal",
-                value: new URL("/" + ((!node.right.value.startsWith("http://") && !node.right.value.startsWith("https://")) ? (new URL(req.originalUrl.substring(1)).protocol + "//" + new URL(req.originalUrl.substring(1)).hostname + ((new URL(req.originalUrl.substring(1)).port) ? new URL(req.originalUrl.substring(1)).port : "") + ((!node.right.value.startsWith("/")) ? new URL(req.originalUrl.substring(1)).pathname : "/")) : ((node.right.value.startsWith("//")) ? new URL(req.originalUrl.substring(1)).protocol : "")) + node.right.value, req.protocol + "://" + req.get("host")).href
-              };
-            },
-            CallExpression: (node) => {
-              if ((node.callee.name !== "fetch") || !node.arguments[0] || (node.arguments[0].type !== "Literal")) return;
-              node.arguments[0] = {
-                type: "Literal",
-                value: new URL("/" + ((!node.arguments[0].value.startsWith("http://") && !node.arguments[0].value.startsWith("https://")) ? (new URL(req.originalUrl.substring(1)).protocol + "//" + new URL(req.originalUrl.substring(1)).hostname + ((new URL(req.originalUrl.substring(1)).port) ? new URL(req.originalUrl.substring(1)).port : "") + ((!node.arguments[0].value.startsWith("/")) ? new URL(req.originalUrl.substring(1)).pathname : "/")) : ((node.arguments[0].value.startsWith("//")) ? new URL(req.originalUrl.substring(1)).protocol : "")) + node.arguments[0].value, req.protocol + "://" + req.get("host")).href
-              };
-            }
-          });
-          res.contentType("text/javascript");
-          res.end(escodegen.generate(ast));
         } catch {};
       } else {
         serverResponse.pipe(res, {
